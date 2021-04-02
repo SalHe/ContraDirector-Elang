@@ -1,0 +1,368 @@
+
+Contra
+Complete Hacking Guide
+By Trax
+trax@bwass.org
+
+--------
+
+About this guide
+
+This document is meant for hackers and programmers who are interested in learning about the inner workings of the game Contra on the NES. Some parts may be partially documented due to current ignorance of specific game mechanics or data tables. All hexademical numeric values should be prefixed with "0x" to distinguish them from decimal values and avoid ambiguities, but some may have slipped through. All offsets are real NES offsets, so to get the actual offset in the ROM file, you have to add 0x10 to account for the ROM header.
+
+This guide covers only the US version of Contra.
+
+If you have any questions or comments, if you find new data that is not covered in this guide, or if you find mistakes, don't hesitate to contact me by email.
+
+----
+
+Table of Contents
+
+- Overview of the ROM
+- Level headers
+- Graphics
+- Level data
+- Blocks tile mappings
+- Blocks palette mappings
+- Enemy data
+- Sprite data
+
+----
+
+Overview of the ROM
+
+The US version of the Contra ROM has 8 PRG banks and no CHR banks. There's no Cartridge RAM either. It uses the MMC1 mapper, also known as Mapper 1. Bank 7 is always hard-wired to the C000-FFFF range and all the other banks are swapped to the 8000-BFFF range as needed.
+
+Each bank starts with a single byte that corresponds to the bank number.
+
+Here's a brief summary of each of the banks:
+
+Bank 0. Used exclusively for enemy routines. Everything about enemy behaviors, AI, movements, attack patterns is coded in bank 0. Almost every enemy of the game is coded in bank 0, and some enemies, usually those who appear in more than one level, are coded in Bank 7. Unused space: 0x295 bytes.
+
+Bank 1. Starts with music and sound data and code that take approximately 3/4 of the bank. The remaining is for sprite data and drawing code. Unused space: 0x21B bytes.
+
+Bank 2. Starts with level data. Also contains some compressed tile mapping data and alternate graphics data. Contains level headers, a very important set of tables. Also has enemy data, and enemy generation code. Unused space: 0x2C3 bytes.
+
+Bank 3. Starts with blocks tile mappings and color mappings. Blocks are the basic unit of level layout. Also contains routines for end of levels. Unused space: 0x51 bytes.
+
+Bank 4. Mostly compressed graphics data. The rest is code for the ending scene and the ending credits, including the text data. Unused space: 0x23F bytes.
+
+Bank 5. Mostly compressed graphics data. The rest is code and input data for the 3 demo levels. Unused space: 0x9CC bytes.
+
+Bank 6. Mostly compressed graphics data. Also contains data for short text sequences, like level names. All the code for the player's weapons. Unused space: 0x2DA bytes.
+
+Bank 7. Core of the game's programming. Reset, NMI, Break. Drawing of name tables and sprites. Bank switching. Routines for the intro sequence. Controller input. Score calculation. Graphics decompression routines. Palette codes. Collision detection. Pointer table for enemy routines. Score table. Enemy attributes. Bullet angles and speeds. Unused space: 0x5EE bytes.
+
+----
+
+Level headers - 0xB319 (bank 2)
+
+This is probably the most important data tables in the game. As a hacker, you will come back to them constantly. They contain key information for each of the 8 levels. Each level has a 0x20 bytes table, minus 6 bytes that are likely unused. Pointers are little-endian. Below is a breakdown of the offsets for each level:
+
+00	: Outdoor/Indoor (0 = Outdoor ; 1 = Indoor ; FF = Indoor Boss Room)
+01	: Scrolling (0 = Horizontal ; 1 = Vertical)
+02-03	: Level Data Pointer
+04-05	: Tile Mappings Pointer
+06-07	: Palette Mappings Pointer
+08	: Alternate Graphics Loading (+2) (section where they start loading)
+09-0B	: Tile Collision Limits
+0C-0F	: Palette Codes for Cycling Background Tiles
+10-13	: Palette Codes for Background Tiles
+14-17	: Palette Codes for Sprites
+18	: Section to stop scrolling at (+2) (level length)
+19	: ???
+1A-1F	: Apparently unused
+
+Offset 00 defines the type of level. Outdoor refers to a level that scrolls horizontally or vertically, where the player has the most freedom of movement. Levels 1-3-5-6-7-8 in the original game. Indoor refers to a level with pseudo-3D environment. There is no scrolling, the player can move left and right and jump, but shoots towards the depth of the screen, like a Z axis. Levels 2-4 in the original game. The value FF is not set in the table itself, but it's another level type, which refer to the levels 2-4 boss rooms. It's similar to the Indoor type, except the player shoots in all directions in the X/Y plane and cannot go prone. There's no pseudo-3D factor.
+
+Offset 01 defines the scrolling type for Outdoor levels. Horizontal or vertical. Many aspects of the game are different according to scrolling. For example, the X/Y positions of enemies are inverted in vertical scrolling levels. This byte has no effect when the level type is not Outdoor.
+
+Offset 02-03 is a pointer to the level data, or more precisely, to the level's data pointer table. Level data refers to the blocks (4x4 tiles) that make the layout of the level. The pointer is in the 8000-BFFF range, and points to bank 2, so no pointer conversion is needed. See the level data section for more details.
+
+Offset 04-05 is a pointer to tile mappings data. These tile mappings define what tiles are used to make the blocks that in turn, make the level's layout. Each block is made of 4x4 tiles. The pointer is in the 8000-BFFF range, and points to bank 3. Add 0x4000 to the value to get the real offset in the ROM. See the tile mappings data section for more details.
+
+Offset 06-07 is a pointer to the palette mappings of the level's blocks. Each block is divided into 4 corners of 2x2 tiles that are associated to one of the 4 background palettes. The pointer is in the 8000-BFFF range, and points to bank 3. Add 0x4000 to the value to get the real offset in the ROM. See the palette mappings data section for more details.
+
+Offset 08 is the section number at which alternate graphics start being loaded. Add 1 to that number to get the actual section number that triggers the changes. See the alternate graphics section for more details.
+
+Offset 09-0B are the 3 bytes that determine the boundaries between the different collision types for each background tile. See the collision section for more details.
+
+Offset 0C-0F are the 4 palette codes for cycling background tiles. The cycling goes through 4 color palettes. See the palettes section for more details.
+
+Offset 10-13 are the 4 palette codes for background tiles. See the palettes section for more details.
+
+Offset 14-17 are the 4 palette codes for sprites tiles. See the palettes section for more details.
+
+Offset 18 is the section number at which the level stops scrolling. Add 1 to this number to get the actual number of sections in the level.
+
+Offset 19 is a value for which I ignore the utility. Level 5 has a value of 01, and levels 6-7 have a value of 81. If you know the meaning of this byte, please contact me.
+
+Offsets 1A-1F are apparently unused. Could be used for new features in a hack.
+
+----
+
+Graphics
+
+All graphics data in Contra are compressed using a simple mix of literal strings of bytes, where bytes are processed one after another, and RLE commands, where the same byte is copied multiple times. RLE stands for Running Length Encoding. Other types of data in the ROM use this compression scheme, like certain tile mappings and level blocks data.
+
+Because of the compression, graphics in Contra cannot be taken straight from the ROM and cannot be edited by regular NES graphics editor software. You have to reconstitute the contents of the PPU and work from there.
+
+All graphics data in the ROM are separated into "graphics groups". There are 0x1B graphics groups in total. Some of them are common to different parts of the game. Each of the graphics groups load a series of tiles in one or multiple parts of the PPU. Each part of the game has one or more graphics groups.
+
+The starting point is the graphics groups pointer table at 0x1C8E3, bank 7. There are 0x0D pointers in this table, for 8 levels, 2 boss rooms, intro graphics, intro tile mappings and the ending scene. Each of these pointers point to a sequence of bytes in the table that follows immediately, at 0x1C8FD. Each byte in these sequences represents a graphics group. Sequences end with 0xFF. The complete set of tables for graphics groups is listed below:
+
+1C8FD: Tables for Graphics Groups Codes (53 bytes)
+
+1C8FD: 03 13 19 1A 14 16 05 FF		Level 1
+1C905: 03 04 06 0A 0F 10 11 FF		Level 2
+1C90D: 03 04 06 0A 0F 10 11 12 FF	Level 4
+1C916: 03 13 19 1A 14 16 07 FF		Level 3
+1C91E: 03 13 19 1A 15 16 0B FF		Level 5
+1C926: 03 13 19 1A 15 16 0C FF		Level 6
+1C92E: 03 13 19 1A 15 16 0D FF		Level 7
+1C936: 03 13 19 0E FF			Level 8
+1C93B: 03 04 13 08 FF			Level 2 Boss Room
+1C940: 03 04 13 08 09 FF		Level 4 Boss Room
+1C946: 01 FF				Intro Graphics
+1C948: 01 02 FF				Intro Graphics and Tile Mappings
+1C94B: 01 03 17 18 FF			Ending Scene
+
+To each of the graphics groups correspond an entry into the table that follows immediately, at 0x1C950. Each entry in this table is 3 bytes long. This table contains pointers and bank numbers to the actual graphics data in the ROM. The structure of each entry is as follow:
+
+XXXX ..		Pointer (little-endian)
+.... XX		Bank Number (except 00 -> 07)
+
+All pointers, except pointer 00, point to the 8000-BFFF range. With the bank number, you can convert the pointer to the actual offset in the ROM. Pointer 00 has bank number 00, but it actually points to bank 7, and is used to fill the entire PPU to zeroes, which effectively erase everything to black.
+
+If the bank number has bit 7 set, it means all tiles from that graphics group must be flipped horizontally. In the original game, only graphics group 0x10 has this, where the bank number is 0x84 instead of 0x04. To effectively flip a tile horizontally, each of the 0x10 bytes that compose the tile must swap its opposite bits with each other. In other words, swap bit 0 with 7, bit 1 with 6, bit 2 with 5, and bit 3 with 4.
+
+For example, graphics group 03, which is used for graphics common to all 8 levels, reads like that:
+
+0180 04
+
+This means the pointer value is 0x8001, in bank 4. Add 0x8000 and you get 0x10001, which is the actual offset in the ROM where the graphics data starts.
+
+The first 2 bytes of the graphics data are a pointer to the PPU memory where the data should be copied. It's like setting the position of the writing head for the PPU. This pointer is little-endian.
+
+After that, the next byte determines one of 4 different courses of action: literal string, RLE command, PPU address change or end of sequence. After each action, you simply repeat the process until you hit 0xFF, which announces the end of the sequence.
+
+If the byte read is negative, i.e. bit 7 is set, then it announces a literal string of bytes. Bits 0-6 determine how many of the following bytes are copied to the PPU. For example, the value 0xA2 has bit 7 set, and if you keep bits 0-6 (bitwise AND 0x7F), you get 0x22. This means the next 0x22 bytes are copied to the PPU.
+
+If the byte read is positive, i.e. bit 7 is clear, then it announces a RLE command. Bits 0-6 determine how many times the next byte is copied to the PPU. For example, the value 0x22 followed by 0x14. It means the value 0x14 is copied to the PPU 0x22 times.
+
+If the value read is exactly 0x7F, it announces a change in the PPU writing address. Use the next 2 bytes to set the PPU to the new address, little-endian.
+
+Finally, if the value is exactly 0xFF, it announces the end of the graphics sequence. You then go to the next graphics group and repeat the process.
+
+Once all graphics group are processed, you should be able to display graphics correctly for that specific level or part of the game. This includes both sprite graphics and background graphics.
+
+----
+
+Alternate Graphics
+
+Once in each level, the graphics can be modified to accommodate new enemies and tiles. The section of the level that triggers this change is defined in the level's header, offset 0x08. The information needed for these changes is located in a table at 0x1CD2C, bank 7. This table contains 8 entries, one for each level. Each entry is 5 bytes long. The structure of each entry is as follow:
+
+Bytes 0-1: PPU address
+Bytes 2-3: CPU address
+Byte 4   : Number of Tiles to Change (x2)
+
+PPU and CPU addresses are little-endian. The number of tiles to change must be multiplied by 2. This is the entry for level 1:
+
+80 1A 52 92 2C
+
+In this example, the starting PPU address, where the graphics data is copied to, is 0x1A80. The CPU address, where the graphics data is copied from, is 0x9252. All alternate graphics data is taken from bank 2, because it's in the same loading sequence as tile mappings for the level's layout. No offset adjustment needed. Finally, the 5th byte is 0x2C, multiplied by 2 gives 0x58 tiles that will change.
+
+Note that these graphics change don't happen instantly, likely to avoid lag. The game engine loads 2 tiles per frame. The value 0x58 is 88 in decimal, which means it takes 88 frames to load everything, or 88 / 60 = 1.47 second. Because of this, you need to make sure none of the graphics that are replaced by this process are on the screen at the time of the change.
+
+To see what happens if you switch to alternate graphics prematurely, try this. Take a fresh ROM of Contra, and change offset 08 of level 1's header, from 0x0B to 0x01. Once you reach section 02, you will see mountains and water transform into garbled tiles. This is because these graphics are replaced by tiles for the Boss Barricade.
+
+----
+
+Level data
+
+Level data is what determines the level's layout. The smallest modifiable unit of level data is a "block", a matrix of 4x4 tiles.
+
+Levels are separated into "sections". A section's width is the width of the screen, 256 pixels. Indoor levels and outdoor horizontal levels have sections 8 blocks wide and 7 blocks high, for a total of 56 blocks. Vertical levels have sections 8 blocks wide and 8 blocks high, for a total of 64 blocks. However, the topmost blocks of each section are cut in half in vertical levels. The top two rows of these blocks are ignored, so it's more like 7.5 blocks high.
+
+Each block has its own index number, from 0x00 up to 0x7F. Level data is compressed using the same algorithm as the graphics data. If the byte to read is negative (bit 7 set), it's a literal string of bytes. If the byte to read is positive (bit 7 clear), it's a RLE command. See the graphics section for more details on the compression scheme.
+
+Level data is in bank 2, so there's no pointer conversion needed. Offset 02-03 in the level's header is the offset to the level data pointer table. To each of these pointers correspond a section of the level, where the compressed level data starts.
+
+In each section, blocks are layed out from the top-left corner, going right, then down. Repeat the process for all sections.
+
+Note that in some levels, the number of pointers is not always the same as the actual size of the level. All levels that are outdoor and horizontal (1-5-6-7-8) have one extra pointer at the end of the pointer table, and the pointer value is the same as the first section. I don't know why.
+
+Indoor levels boss rooms have their own pointer table, at 0x9013, bank 2. Each point to the level data of these rooms. This data is not compressed.
+
+----
+
+Blocks tile mappings
+
+Blocks are the units that make a level's layout. Each block is made of 4 rows of 4 tiles. A tile is 8x8 pixels, so a block is 32x32 pixels. Offset 04-05 in the level's header is a pointer that points to the beginning of the tile mapping data. Each string of 0x10 bytes define the tiles that make a single block. Tiles in each block are placed from the top-left corner, going right, then down. These tiles compose the background, so they come from the 0000-0FFF range of the PPU.
+
+Each level has a different number of blocks to be used in level design. The maximum number of possible blocks is 0x80, or 128 in decimal. No level in the original game uses all the possible block indexes.
+
+----
+
+Blocks palette mappings
+
+Each available block in a given level is divided into 4 corners of 2x2 tiles. Each of these corners have its own background palette code, from 0 to 3. This means one byte is used for each block, 2 bits per corner, like described below:
+
+xx.. ....	Palette code for lower-right corner
+..xx ....	Palette code for lower-left corner
+.... xx..	Palette code for upper-right corner
+.... ..xx	Palette code for upper-left corner
+
+Offset 06-07 in the level's header is a pointer that points to the beginning of the tile mapping data, in bank 3. Add 0x4000 to get the actual offset in the ROM. The index of the byte is the same as the block's index.
+
+----
+
+Enemy data
+
+Each section of a level has its own enemy data, except section 0, which cannot have enemies. Section 0 of enemy data is associated to section 1 of level data, so there's always one less enemy section than level sections.
+
+To get the pointer for the level's enemy data, there's a pointer table at 0xB513, bank 2. One pointer for each level, and they point to bank 2, so no conversion needed. The table pointed to contains as many pointers as there are enemy sections. The string of bytes is processed until you hit 0xFF.
+
+Each enemy has X/Y coordinates, type and attributes, which vary according to the enemy type. A single enemy takes 3 bytes, but there's a special mechanism that lets you repeat an enemy vertically, which takes one more byte, up to 3 repetitions. Below is the basic enemy data structure:
+
+XX TT YY
+
+XX = X Position
+xxxxxxxx	X Position
+
+TT = Enemy Type + Repeat
+xx......	Repeat
+..xxxxxx	Enemy Type
+
+YY = Y Position + Attributes
+xxxxx...	Y Position
+.....xxx	Attributes
+
+X position is in pixels, between 0x00 and 0xFF. Y position goes in multiples of 8, starting from the top of the screen. A Y position higher than 0x1C could prevent an enemy from appearing on screen.
+
+The attributes are 3 bits, from 0 to 7. Some enemies have no attributes, some of them use a 3-bit value, and some others use bits separately. Each enemy has its own attribute or set of attributes. Please consult the separate document named "Enemy Attributes" to get all the details for each enemy.
+
+Note that in certain cases, like the Claws in level 7, attributes actually use 4 bits. It means the last bit of the Y position also serves as bit 3 of the attributes. An odd Y position will make bit 3 of attributes set, and an even Y position will make bit 3 of attributes clear.
+
+The repeat bits can be used to repeat the same enemy multiple times, but with restrictions. If the value is 0, the enemy is not repeated and takes 3 bytes. For each repetition, one more byte is added and has the same structure as the YY byte. This means a repeated enemy will have the same X position and the same type, but have its own Y position and attributes. Note that in a vertical level, X and Y positions are reversed on screen, so you can only have repeated enemies with the same Y position.
+
+Enemy types can be separated into two categories: common enemies and level-specific enemies.
+
+Common enemies have type lower than 0x10. They appear in more than one level, and can technically be placed in any level and they will work. However, if their graphics tiles are not in the PPU, they will appear as glitchy tiles.
+
+Level-specific enemies have type 0x10 or higher. They are different in each level. For example, enemy type 0x10 in level 1 is the Barricade Bomb Turret, in level 3 it's a Rock Platform and in level 7 it's a Mechanical Claw. All levels have their own set of unique enemies, and the enemy codes always start from 0x10.
+
+Please see the separate document named "Enemy Attributes" for all enemy codes according to each level.
+
+Indoor enemy data
+
+Enemy data in indoor levels has a different structure than outdoor levels. Each section starts with a header of 4 bytes, as described below:
+
+Byte 0: Number of cores to destroy
+Byte 1: ???
+Byte 2: Generator associated with room
+Byte 3: Enemy sequences group code
+
+Byte 0 is the number of cores that must be destroyed to make the entire room explode, remove the eletric barrier and advance to the next room. The game does not make the calculation from enemy data, so it must be set explicitly.
+
+I have no idea what byte 1 does.
+
+Byte 2 is the enemy code of the enemy that is spawned right as you enter the room. Most rooms in the original game use enemy code 0x19, which is the Green Guy Generator, but there's also 0x1A, the Roller Generator, which doesn't prevent Green Guys from appearing. The boss room of level 2 spawns enemy type 0x10, which is the Boss Eye. The boss room of level 4 spawns the Red/Blue Guy Generator.
+
+Byte 3 is an index, either 00 or 01, into the pointer table at 0x0DCF, in bank 0. It sets the data group for the Green Guys cycles.
+
+Following the 4 bytes of the header, each group of 3 bytes define an enemy. The data goes on until you hit 0xFF. Below is the data structure for indoor enemies:
+
+Byte 0: Position of Enemy
+
+xxxx....	Y Position * 16
+....xxxx	X Position * 16
+
+Byte 1: Position Adjust and Object Type
+
+x.......	Y Position + 8
+.x......	X Position + 8
+..xxxxxx	Enemy Type
+
+Byte 2: Enemy Attributes
+
+Byte 0 defines the X/Y position of the enemy, by 16 pixels increments, or two tiles. If you want to align the enemy to the next tile, then you use bit 7 of byte 1 for Y position, and bit 6 of byte 1 for X position. Bits 0-5 of byte 1 sets the enemy type. Byte 2 defines the enemy attributes, which is specific to each enemy.
+
+For more details on indoor enemy attributes, see the separate document named "Enemy Attributes".
+
+Green Guys Cycles
+
+Green Guys are not part of the regular enemy data for indoor levels. They appear in each room (except the boss room) as sequences that cycle a specific number of times. They have their own data sets, for which the pointer table is at 0x0DCF. This table has two pointers, one for each indoor level, that point to another pointer table with as many pointers as there are rooms, minus 1 because boss rooms don't have Green Guys.
+
+Enemy Cycles are sequences of bytes where each Green Guy is defined by two bytes, as shown below:
+
+Byte 0: Enemy Type and Attributes
+
+xx......	Type (0 = Run, 1 = Jump, 2 = Group of Four, 3 = Seek)
+..xxxxxx	Attributes, depending on type
+
+Byte 1: Delay and End of Cycle
+
+x.......	End of Cycle
+.xxxxxxx	Delay before next enemy
+
+Byte 0 defines the type of Guy. The Running Guy runs across the room and either shoots bullets, throws grenades or drops rollers. The Jumping Guy moves by jumping and shoots a bullet before each jump. In a Group of Four, they come from both sides, gather in the middle, shoot bullets and then scatter. The Seeking Guy constantly tries to align himself with the player and throws grenades.
+
+Bits 0-6 of byte 1 set the delay, in frames, before the next enemy is generated. Bit 7 of byte 1 denotes the end of the cycle. After a specific number of cycles are completed, Green Guys stop appearing and any remaining Core starts shooting bullets.
+
+For more details on Green Guys attributes, see the separate document named "Enemy Attributes".
+
+Running Men Generation
+
+Outdoor levels can have Running Men (Enemy Type 05) appear from either side of the screen at random intervals. The frequency of generation of Running Men depends on a few factors. At RAM address $7A, there's a value that determines the likeliness of a Running Man to be generated at any moment. Every frame, a random number is generated and compared to the value in $7A. the lower that number is, the higher the frequency of generated Running Men.
+
+First, there's a table at 0xB579, bank 2. This table contains the Base Value for all 8 levels. A value of 00 disables Running Men generation. Then, the Game Completion Count (RAM $31) decreases the coefficient by 0x28 for each completion, capped to 3. After that, the Weapon Strength Code, multiplied by 5, is also subtracted from the coefficient.
+
+On top of the base value coefficient, which determines the probability of generating a Running Man, each screen in a level will have a different byte with additional conditions. The pointer table is at 0xB7BB, bank 2. Each of these pointers point to a series of bytes, one per screen, for each level. Levels 2, 4 and 8 don't have Running Men generation, so they don't have any related data.
+
+A value of 0xFF disables Running Men generation for the screen. Any other value follows a bitwise pattern:
+
+Bit 7 set: 50% probability of No Generation
+Bit 6 set: 25% probability of No Generation
+
+Bits 0-2 sets whether the Generated Running Man may shoot bullets (1 or 2) or go prone. A value of 00 is average, but prevents any attack. A value of 07 will make prone position possible. Note that bits 6 and 7 are not cumulative.
+
+----
+
+Sprite data
+
+The pointer table that contains all pointers for all sprites in the game is at 0x7030, in bank 1. There are 0xCF pointers in total. Different animation frames count for multiple sprites. Each of the pointers point to a series of bytes, of variable length, that define the sprite. Note that there's no sprite 0, because a sprite with that sprite code simply doesn't exist. Compare with sprite code 01, which is a sprite with no tiles. This is likely the code used for an enemy that is present, but invisible.
+
+The sprite data follows the pointer table immediately, starting at 0x71CE. Each sprite entry starts with a tile count, followed by that many groups of 4 bytes. Each group of 4 bytes define a block of two tiles stacked vertically, 8x16 pixels. This is the structure of the 4 bytes blocks:
+
+Byte 0: Y Position (relative to sprite position, can be negative)
+Byte 1: Tile Mapping Code
+Byte 2: Palette Code, flipping, drawing priority (foreground or background)
+Byte 3: X Position (relative to sprite position, can be negative)
+
+The X/Y coordinates are in pixels. Because these numbers can be negative (bit 7 set), their position is always relative to the sprite's position, not an absolute position on the screen.
+
+The tile mapping code defines the tile index. For the top tile n, the bottom tile is n+1. If the tile code is even (bit 0 clear), the tiles are taken from the PPU section 0x0000 (sprite section). If the tile code is odd (bit 0 set), the tiles are taken from the PPU section 0x1000 (background section).
+
+Byte 2 is for all other standard sprite attributes, as described below:
+
+x... ....	Vertical flip
+.x.. ....	Horizontal flip
+..x. ....	Drawing priority
+.... ..xx	Palette code
+
+When the vertical flip bit is set, the top and bottom tiles are drawn vertically flipped, and they are also stacked inversely. The top tile is drawn at the bottom and the bottom one is drawn at the top. The drawing priority means that if the bit is set, the tile is drawn behind the background.
+
+There are two special values that can be used in sprite data. One is the value 0xFE, when used at the beginning of a byte sequence, in lieu of the tile count. This announces a "small sprite". In this case, the sprite is made of a single entry, and the entire byte sequence is 3 bytes long, including the 0xFE value. The second byte is the tile mapping, and the third byte is the sprite attributes. The X position is set to 0xFC (-4) and the Y position is set to 0xF8 (-8).
+
+The second special value is 0x80, when used at the beginning of a group of 4 bytes. This value modifies the CPU address to read from. This is used for sprites that have parts in common, so it saves space in the ROM. Use the next two bytes to form an offset, little-endian, and continue with the remaining tiles at that address. For example:
+
+80 28 B4
+
+This command means go to B428 (subtract 0x4000 to get 0x7428) and generate the remaining tiles from there. Note that some parts accessed that way never form an independent sprite by themselves, and therefore, no pointer point to them.
+
+----
+
+// End of Document //
+
+--------
